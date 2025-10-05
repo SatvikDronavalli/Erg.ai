@@ -25,6 +25,7 @@ prev = time.time()
 left_visibility = None
 right_visibility = None
 while True:
+    #cv2.waitKey(100000)
     if keyboard.is_pressed(" "):
         while True: # Add threading later
             time.sleep(0.01)
@@ -33,7 +34,7 @@ while True:
     success, img = cap.read()
     if len(img)==0:
         break
-    img = cv2.flip(img,-1)
+    img = cv2.flip(img,0)
     img = cv2.resize(img, (1700,1000))
     imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     results = pose.process(imgRGB)
@@ -49,22 +50,20 @@ while True:
                     curr_pose_list = right_pose_list
                     curr_connections = right_connections
                     break
-                else:
+                elif left_visibility and right_visibility:
                     print("left is greater")
                     curr_pose_list = left_pose_list
                     curr_connections = left_connections
                     break
-        curr_pose_list = right_pose_list
-        curr_connections = right_connections
-        mpDraw.draw_landmarks(img, results.pose_landmarks,mpPose.POSE_CONNECTIONS)
+       # mpDraw.draw_landmarks(img, results.pose_landmarks,mpPose.POSE_CONNECTIONS)
         for id, lm in enumerate(results.pose_landmarks.landmark):
             h,w,c = img.shape
             cx,cy = int(lm.x*w),int(lm.y*h)
             line_positions_dict.update({id: (cx,cy)})
             if id in curr_pose_list:
                 # print(id, lm.visibility)
-                cv2.circle(img, (cx,cy), 5, (255,0,0),cv2.FILLED)
-        for i,f in left_connections:
+                cv2.circle(img, (cx,cy), 10, (255,0,0),cv2.FILLED)
+        for i,f in curr_connections:
             i_cx,i_cy = line_positions_dict[i]
             f_cx,f_cy = line_positions_dict[f]
             cv2.line(img,(i_cx,i_cy),(f_cx,f_cy),(0,255,0),5)
