@@ -74,7 +74,7 @@ while True:
                             if pos_locations_dict[shoulder][-1][0] > pos_locations_dict[shoulder][-7][0]:
                                 finish_time = time.time()
                                 finish = True
-                        elif id == 13 and len(pos_locations_dict[shoulder]) >= 7:
+                        elif id == 11 and len(pos_locations_dict[shoulder]) >= 7:
                             if pos_locations_dict[shoulder][-1][0] < pos_locations_dict[shoulder][-7][0]:
                                 finish_time = time.time()
                                 finish = True
@@ -88,7 +88,7 @@ while True:
                             if pos_locations_dict[shoulder][-1][0] < pos_locations_dict[shoulder][-7][0]:
                                 catch_time = time.time()
                                 catch = True
-                        elif id == 13:
+                        elif id == 11:
                             if pos_locations_dict[shoulder][-1][0] > pos_locations_dict[shoulder][-7][0]:
                                 catch_time = time.time()
                                 finish = True
