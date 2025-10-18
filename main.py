@@ -3,8 +3,16 @@ import cv2
 import time
 import keyboard
 
-cap = cv2.VideoCapture('Videos/IMG_8946 (1).MOV')
+'''
+TODO:
+- Improve glitch filtering with Exponential Moving Average
+- Determine how to extract youtube videos
 
+'''
+
+
+
+cap = cv2.VideoCapture('Videos/IMG_8946 (1).MOV')
 mpPose = mp.solutions.pose
 mpDraw = mp.solutions.drawing_utils
 pose = mpPose.Pose(min_detection_confidence=0.85,min_tracking_confidence=0.85)
