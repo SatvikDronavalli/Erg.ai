@@ -6,22 +6,23 @@ import requests
 from check_validity import isValid
 
 # Library: https://pytubefix.readthedocs.io/en/latest/
-url = "https://www.youtube.com/watch?v=jvXfxs0bTho"
-path = "Videos"
+# url = "https://www.youtube.com/watch?v=jvXfxs0bTho"
+path = "automation_test"
+os.makedirs(path, exist_ok=True)
 def download(url,path):
     yt = YouTube(url, on_progress_callback=on_progress)
 
     ys = yt.streams.get_highest_resolution()
     ys.download(output_path=path)
-download(url=url,path=path)
+# download(url=url,path=path)
 
 # ==========================
 # CONFIG
 # ==========================
 
-# API info @ https://console.cloud.google.com/apis/credentials?project=erging-video-retrieval
+# API key @ https://console.cloud.google.com/apis/credentials?project=erging-video-retrieval
 
-API_KEY = "AIzaSyAW1yMAXpBdtvYdH9Xs9yioA18EIzbJnVE"
+API_KEY = os.environ.get("YOUTUBE_API_KEY")
 
 SEARCH_QUERIES = [
     "2k erg test",
@@ -90,18 +91,16 @@ def is_relevant(snippet):
     return True
 
 
-def collect_video_ids():
+def collect_videos():
     """Search all queries and return a de-duplicated list of relevant video IDs."""
-    video_ids = set()
-
+    videos = {}
     for q in SEARCH_QUERIES:
-        print(f"\n[SEARCH] Query: {q}")
+        # print(f"\n[SEARCH] Query: {q}")
         try:
             items = search_youtube(q, API_KEY, max_results=MAX_RESULTS_PER_QUERY)
         except requests.HTTPError as e:
             print(f"  ! HTTP error during search: {e}")
             continue
-
         for item in items:
             snippet = item.get("snippet", {})
             if not is_relevant(snippet):
@@ -109,14 +108,26 @@ def collect_video_ids():
 
             vid_id = item["id"]["videoId"]
             title = snippet.get("title", "Untitled")
-            if vid_id not in video_ids:
-                video_ids.add(vid_id)
-                print(f"  + Found relevant video: {title} (id={vid_id})")
+            if title not in videos.values():
+                videos[vid_id] = title
+                # print(f"  + Found relevant video: {title} (id={vid_id})")
+
 
         # tiny delay to be nice to the API
         time.sleep(0.3)
 
-    print(f"\n[INFO] Total unique relevant videos: {len(video_ids)}")
-    return list(video_ids)
+    # print(f"\n[INFO] Total unique relevant videos: {len(video_ids)}")
+    return videos
 
-print(search_youtube(query = SEARCH_QUERIES[:5], api_key=API_KEY, max_results=MAX_RESULTS_PER_QUERY))
+videos = collect_videos()
+
+
+# TODO: improve duplicate/blacklisted/whitelisted file checking in folder
+# TODO: loop through entirety of each file and keep those that have a minimum stroke count using mediapipe algo
+for i in list(videos.keys()):
+    url = f"https://www.youtube.com/watch?v={i}"
+    if f"{videos[i]}.mp4" not in os.listdir('automation_test'):
+        print(f"downloading {videos[i]}")
+        download(url,path)
+    else:
+        print("file already in folder")
