@@ -12,7 +12,8 @@ TODO:
 
 
 
-cap = cv2.VideoCapture('Videos/IMG_8946 (1).MOV')
+cap = cv2.VideoCapture('automation_test/2000m Row in 7 Minutes Row Along  Real Time Tips.mp4')
+fps = cap.get(cv2.CAP_PROP_FPS)
 mpPose = mp.solutions.pose
 mpDraw = mp.solutions.drawing_utils
 pose = mpPose.Pose(min_detection_confidence=0.85,min_tracking_confidence=0.85)
@@ -22,28 +23,21 @@ left_pose_list = [11,13,15,17,23,25,27]
 left_connections = [(11,13),(13,15),(15,17),(11,23),(23,25),(25,27)]
 line_positions_dict = dict()
 pos_locations_dict = dict()
-prev = time.time()
 left_visibility = None
 right_visibility = None
 finish = False
-finish_time = None
+finish_frame = None
 catch = False
-catch_time = None
+catch_frame = None
 shoulder = None
 waited = 0
 stroke_count = 0
-
+frame_idx = 0
 while True:
-    #cv2.waitKey(100000)
-    if keyboard.is_pressed(" "):
-        while True: # Add threading later
-            time.sleep(0.01)
-            if keyboard.is_pressed(" "):
-                break
     success, img = cap.read()
-    if len(img)==0:
+    if not success:
         break
-    img = cv2.flip(img,-1)
+    # img = cv2.flip(img,-1)
     img = cv2.resize(img, (1700,1000))
     imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     results = pose.process(imgRGB)
@@ -80,11 +74,11 @@ while True:
                         if id == 12 and len(pos_locations_dict[shoulder]) >= 7:
                             # adjust this based on glitches
                             if pos_locations_dict[shoulder][-1][0] > pos_locations_dict[shoulder][-7][0]:
-                                finish_time = time.time()
+                                finish_frame = frame_idx
                                 finish = True
                         elif id == 11 and len(pos_locations_dict[shoulder]) >= 7:
                             if pos_locations_dict[shoulder][-1][0] < pos_locations_dict[shoulder][-7][0]:
-                                finish_time = time.time()
+                                finish_frame = frame_idx
                                 finish = True
                 elif finish and not catch:
                     pos_locations_dict[id].append((cx,cy))
@@ -94,21 +88,19 @@ while True:
                         if id == 12:
                             # adjust this based on glitches
                             if pos_locations_dict[shoulder][-1][0] < pos_locations_dict[shoulder][-7][0]:
-                                catch_time = time.time()
+                                catch_frame = frame_idx
                                 catch = True
                         elif id == 11:
                             if pos_locations_dict[shoulder][-1][0] > pos_locations_dict[shoulder][-7][0]:
-                                catch_time = time.time()
-                                finish = True
+                                catch_frame = frame_idx
+                                catch = True
         for i,f in curr_connections:
             i_cx,i_cy = line_positions_dict[i]
             f_cx,f_cy = line_positions_dict[f]
             cv2.line(img,(i_cx,i_cy),(f_cx,f_cy),(0,255,0),5)
-    curr = time.time()
-    fps = 1/(curr-prev)
-    prev = curr
+
     if catch and finish:
-        stroke_rate = round(60/(catch_time-finish_time),3)
+        stroke_rate = round(60*fps/(catch_frame-finish_frame),3)
         stroke_count += 1
         catch = False
         finish = False
@@ -119,4 +111,5 @@ while True:
     cv2.putText(img, str(int(fps)), (70, 50), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
     cv2.imshow("Image", img)
     cv2.waitKey(1)
+    frame_idx += 1
 

@@ -7,13 +7,12 @@ from check_validity import isValid
 
 # Library: https://pytubefix.readthedocs.io/en/latest/
 # url = "https://www.youtube.com/watch?v=jvXfxs0bTho"
-path = "automation_test"
+path = "test_dir"
 os.makedirs(path, exist_ok=True)
-def download(url,path):
+def download(url,path, id):
     yt = YouTube(url, on_progress_callback=on_progress)
-
     ys = yt.streams.get_highest_resolution()
-    ys.download(output_path=path)
+    # ys.download(output_path=path, filename=id)
 # download(url=url,path=path)
 
 # ==========================
@@ -32,7 +31,7 @@ SEARCH_QUERIES = [
     "6k erg",
 ]
 
-MAX_RESULTS_PER_QUERY = 10
+MAX_RESULTS_PER_QUERY = 1
 DOWNLOAD_DIR = "Videos"
 
 
@@ -92,7 +91,8 @@ def is_relevant(snippet):
 
 
 def collect_videos():
-    """Search all queries and return a de-duplicated list of relevant video IDs."""
+    """Search all queries and return a de-duplicated dictionary of relevant videos.
+        The keys are the video id's and the values are the video titles"""
     videos = {}
     for q in SEARCH_QUERIES:
         # print(f"\n[SEARCH] Query: {q}")
@@ -108,9 +108,8 @@ def collect_videos():
 
             vid_id = item["id"]["videoId"]
             title = snippet.get("title", "Untitled")
-            if title not in videos.values():
-                videos[vid_id] = title
-                # print(f"  + Found relevant video: {title} (id={vid_id})")
+            videos[vid_id] = title
+            # print(f"  + Found relevant video: {title} (id={vid_id})")
 
 
         # tiny delay to be nice to the API
@@ -121,13 +120,14 @@ def collect_videos():
 
 videos = collect_videos()
 
-
-# TODO: improve duplicate/blacklisted/whitelisted file checking in folder
+# TODO: improve duplicate/blacklisted/whitelisted file checking in folder (make json file to store valid/invalid files)
 # TODO: loop through entirety of each file and keep those that have a minimum stroke count using mediapipe algo
+
+all_videos = os.listdir(path)
 for i in list(videos.keys()):
     url = f"https://www.youtube.com/watch?v={i}"
-    if f"{videos[i]}.mp4" not in os.listdir('automation_test'):
+    if i not in all_videos:
         print(f"downloading {videos[i]}")
-        download(url,path)
+        download(url,path,i)
     else:
-        print("file already in folder")
+        print(f"{videos[i]} is already in folder")
