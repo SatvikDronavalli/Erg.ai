@@ -31,13 +31,13 @@ def check_validity(path):
     stroke_count = 0
     frame_idx = 0
     prev_stroke_rate = None
-
+    temp = []
     # Loop for video processing
 
     while True:
-        if stroke_count >= 30:  # Heuristic, 10 contiguous strokes
-            print(f"validated at {frame_idx/fps} seconds")
-            return True
+        if stroke_count >= 10:  # Heuristic, 10 contiguous strokes
+            ten_good_strokes = temp
+            return True, ten_good_strokes
         success, img = cap.read()
         if not success or img is None:
             break # End of video
@@ -53,7 +53,7 @@ def check_validity(path):
 
             # Side selection based on visibility
 
-            if not left_visibility and not right_visibility:
+            if left_visibility is None and right_visibility is None:
                 for id, lm in enumerate(results.pose_landmarks.landmark):
                     if id == 25:
                         left_visibility = lm.visibility
@@ -72,6 +72,10 @@ def check_validity(path):
             if sum(visibilities) / len(curr_pose_list) < 0.85:
                 print("reset")
                 stroke_count = 0
+                pos_locations_dict = {}
+                finish = False
+                catch = False
+                waited = 0
                 continue
 
             # Determine stroke duration by logging catch and finish times
@@ -122,13 +126,15 @@ def check_validity(path):
             stroke_rate = round(60*fps/(catch_frame-finish_frame),3)
             if prev_stroke_rate is not None and abs(prev_stroke_rate-stroke_rate) <= 7:
                 stroke_count += 1
-                print(f"{stroke_count} contiguous strokes")
-                catch = False
-                finish = False
-                waited = 0
+                temp.append(pos_locations_dict)
+                print(f"{stroke_count} contiguous {'stroke' if stroke_count == 1 else 'strokes'}")
+            pos_locations_dict = {}
+            catch = False
+            finish = False
+            waited = 0
             prev_stroke_rate = stroke_rate
         cv2.waitKey(1)
         frame_idx += 1
-    return False
+    return False, []
 
 print(check_validity("2000m Row in 7 Minutes Row Along  Real Time Tips.mp4"))
