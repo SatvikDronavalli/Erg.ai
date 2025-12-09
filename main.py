@@ -2,6 +2,7 @@ import mediapipe as mp
 import cv2
 import time
 import keyboard
+import math
 
 '''
 TODO:
@@ -12,7 +13,7 @@ TODO:
 
 
 
-cap = cv2.VideoCapture('automation_test/2000m Row in 7 Minutes Row Along  Real Time Tips.mp4')
+cap = cv2.VideoCapture('videos/satvik_erg.MOV')
 fps = cap.get(cv2.CAP_PROP_FPS)
 mpPose = mp.solutions.pose
 mpDraw = mp.solutions.drawing_utils
@@ -30,14 +31,35 @@ finish_frame = None
 catch = False
 catch_frame = None
 shoulder = None
+curr_pose_list = None
+curr_connections = None
 waited = 0
 stroke_count = 0
 frame_idx = 0
+
+def get_knee_lengths(hip,knee,ankle):
+    a = abs(math.dist(knee,ankle))
+    b = abs(math.dist(ankle,hip))
+    c = abs(math.dist(knee,hip))
+    return a,b,c
+
+def get_body_lengths(hip,shoulder,knee):
+    a = abs(math.dist(shoulder,hip))
+    b = abs(math.dist(shoulder,knee))
+    c = abs(math.dist(knee,hip))
+    return a,b,c
+
+def find_angle(a,b,c):
+    # finds angle using law of cosines
+    right_side = (a**2 - b**2 + c**2)/(2*a*c)
+    return math.acos(right_side)
+
+
 while True:
     success, img = cap.read()
     if not success:
         break
-    # img = cv2.flip(img,-1)
+    img = cv2.flip(img,-1)
     img = cv2.resize(img, (1700,1000))
     imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     results = pose.process(imgRGB)
@@ -58,6 +80,8 @@ while True:
                     curr_connections = left_connections
                     shoulder = 11
                     break
+        if not curr_pose_list:
+            break
        # mpDraw.draw_landmarks(img, results.pose_landmarks,mpPose.POSE_CONNECTIONS)
         for id, lm in enumerate(results.pose_landmarks.landmark):
             h,w,c = img.shape
@@ -98,7 +122,8 @@ while True:
             i_cx,i_cy = line_positions_dict[i]
             f_cx,f_cy = line_positions_dict[f]
             cv2.line(img,(i_cx,i_cy),(f_cx,f_cy),(0,255,0),5)
-
+    else:
+        continue
     if catch and finish:
         stroke_rate = round(60*fps/(catch_frame-finish_frame),3)
         stroke_count += 1
@@ -109,6 +134,28 @@ while True:
         cv2.putText(img, f"Stroke rate: {stroke_rate}", (1200, 50), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
         cv2.putText(img, f"Stroke count: {stroke_count}", (1200, 100), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
     cv2.putText(img, str(int(fps)), (70, 50), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
+    # Add circle sector graphing here
+    h,w,c = img.shape
+    if curr_pose_list == right_pose_list:
+        hip = (results.pose_landmarks.landmark[24].x,results.pose_landmarks.landmark[24].y)
+        knee = (results.pose_landmarks.landmark[26].x,results.pose_landmarks.landmark[26].y)
+        ankle = (results.pose_landmarks.landmark[28].x,results.pose_landmarks.landmark[28].y)
+        shoulder_pos = (results.pose_landmarks.landmark[12].x,results.pose_landmarks.landmark[12].y)
+        a,b,c = get_knee_lengths(hip=hip,knee=knee,ankle=ankle)
+        d,e,f = get_body_lengths(hip=hip,shoulder=shoulder_pos,knee=knee)
+        knee_angle = round(find_angle(a,b,c)*(180/math.pi),3)
+        body_angle = round(find_angle(d,e,f)*(180/math.pi),3)
+    elif curr_pose_list == left_pose_list:
+        hip = (results.pose_landmarks.landmark[23].x, results.pose_landmarks.landmark[23].y)
+        knee = (results.pose_landmarks.landmark[25].x, results.pose_landmarks.landmark[25].y)
+        ankle = (results.pose_landmarks.landmark[27].x, results.pose_landmarks.landmark[27].y)
+        shoulder_pos = (results.pose_landmarks.landmark[11].x, results.pose_landmarks.landmark[11].y)
+        a,b,c = get_knee_lengths(hip=hip,knee=knee,ankle=ankle)
+        d,e,f = get_body_lengths(hip=hip,shoulder=shoulder_pos,knee=knee)
+        knee_angle = round(find_angle(a,b,c)*(180/math.pi),3)
+        body_angle = round(find_angle(d,e,f)*(180/math.pi),3)
+    cv2.putText(img, f"Knee angle: {knee_angle}", (300, 50), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
+    cv2.putText(img, f"Body angle: {body_angle}", (300, 100), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
     cv2.imshow("Image", img)
     cv2.waitKey(1)
     frame_idx += 1
