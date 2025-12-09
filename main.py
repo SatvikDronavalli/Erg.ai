@@ -22,6 +22,7 @@ right_pose_list = [12,14,16,18,24,26,28]
 right_connections = [(12,14),(14,16),(16,18),(12,24),(24,26),(26,28)]
 left_pose_list = [11,13,15,17,23,25,27]
 left_connections = [(11,13),(13,15),(15,17),(11,23),(23,25),(25,27)]
+prev_positions_ema = dict()
 line_positions_dict = dict()
 pos_locations_dict = dict()
 left_visibility = None
@@ -54,6 +55,9 @@ def find_angle(a,b,c):
     right_side = (a**2 - b**2 + c**2)/(2*a*c)
     return math.acos(right_side)
 
+def exponential_moving_average(cx,cy,px,py,a=0.3):
+    #TODO: Tune alpha
+    return int(cx*a+px*(1-a)),int(cy*a+py*(1-a))
 
 while True:
     success, img = cap.read()
@@ -86,6 +90,9 @@ while True:
         for id, lm in enumerate(results.pose_landmarks.landmark):
             h,w,c = img.shape
             cx,cy = int(lm.x*w),int(lm.y*h)
+            if id in prev_positions_ema:
+                px,py = prev_positions_ema[id]
+                cx,cy = exponential_moving_average(cx,cy,px,py)
             line_positions_dict.update({id: (cx,cy)})
             if id in curr_pose_list:
                 # print(id, lm.visibility)
@@ -118,6 +125,7 @@ while True:
                             if pos_locations_dict[shoulder][-1][0] > pos_locations_dict[shoulder][-7][0]:
                                 catch_frame = frame_idx
                                 catch = True
+            prev_positions_ema[id] = (cx,cy)
         for i,f in curr_connections:
             i_cx,i_cy = line_positions_dict[i]
             f_cx,f_cy = line_positions_dict[f]
