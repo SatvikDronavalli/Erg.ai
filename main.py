@@ -4,15 +4,6 @@ import time
 import keyboard
 import math
 
-'''
-TODO:
-- Improve glitch filtering with Exponential Moving Average
-- Determine how to extract youtube videos
-
-'''
-
-
-
 cap = cv2.VideoCapture('videos/satvik_erg.MOV')
 fps = cap.get(cv2.CAP_PROP_FPS)
 mpPose = mp.solutions.pose
@@ -59,7 +50,20 @@ def exponential_moving_average(cx,cy,px,py,a=0.3):
     #TODO: Tune alpha
     return int(cx*a+px*(1-a)),int(cy*a+py*(1-a))
 
+alphas = [0.2+i*0.025 for i in range(0,11)] # 10 strokes in test video
+glitches = dict()
+max_knee_glitch = -1
+max_body_glitch = -1
+prev_knee_angle = 0
+knee_angle = 0
+prev_body_angle = 0
+body_angle = 0
+a_idx = 0
+ended_stroke = False
+
 while True:
+    curr_alpha = alphas[a_idx]
+    ended_stroke = False
     success, img = cap.read()
     if not success:
         break
@@ -92,7 +96,7 @@ while True:
             cx,cy = int(lm.x*w),int(lm.y*h)
             if id in prev_positions_ema:
                 px,py = prev_positions_ema[id]
-                cx,cy = exponential_moving_average(cx,cy,px,py)
+                cx,cy = exponential_moving_average(cx,cy,px,py,curr_alpha)
             line_positions_dict.update({id: (cx,cy)})
             if id in curr_pose_list:
                 # print(id, lm.visibility)
@@ -135,36 +139,50 @@ while True:
     if catch and finish:
         stroke_rate = round(60*fps/(catch_frame-finish_frame),3)
         stroke_count += 1
+        ended_stroke = True
         catch = False
         finish = False
         waited = 0
     if stroke_count:
         cv2.putText(img, f"Stroke rate: {stroke_rate}", (1200, 50), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
         cv2.putText(img, f"Stroke count: {stroke_count}", (1200, 100), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
-    cv2.putText(img, str(int(fps)), (70, 50), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
+    # cv2.putText(img, str(int(fps)), (70, 50), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
     # Add circle sector graphing here
     h,w,c = img.shape
     if curr_pose_list == right_pose_list:
-        hip = (results.pose_landmarks.landmark[24].x,results.pose_landmarks.landmark[24].y)
-        knee = (results.pose_landmarks.landmark[26].x,results.pose_landmarks.landmark[26].y)
-        ankle = (results.pose_landmarks.landmark[28].x,results.pose_landmarks.landmark[28].y)
-        shoulder_pos = (results.pose_landmarks.landmark[12].x,results.pose_landmarks.landmark[12].y)
+        hip = (line_positions_dict[24][0],line_positions_dict[24][1])
+        knee = (line_positions_dict[26][0],line_positions_dict[26][1])
+        ankle = (line_positions_dict[28][0],line_positions_dict[28][1])
+        shoulder_pos = (line_positions_dict[12][0],line_positions_dict[12][1])
         a,b,c = get_knee_lengths(hip=hip,knee=knee,ankle=ankle)
         d,e,f = get_body_lengths(hip=hip,shoulder=shoulder_pos,knee=knee)
         knee_angle = round(find_angle(a,b,c)*(180/math.pi),3)
         body_angle = round(find_angle(d,e,f)*(180/math.pi),3)
     elif curr_pose_list == left_pose_list:
-        hip = (results.pose_landmarks.landmark[23].x, results.pose_landmarks.landmark[23].y)
-        knee = (results.pose_landmarks.landmark[25].x, results.pose_landmarks.landmark[25].y)
-        ankle = (results.pose_landmarks.landmark[27].x, results.pose_landmarks.landmark[27].y)
-        shoulder_pos = (results.pose_landmarks.landmark[11].x, results.pose_landmarks.landmark[11].y)
+        hip = (line_positions_dict[23][0], line_positions_dict[23][1])
+        knee = (line_positions_dict[25][0], line_positions_dict[25][1])
+        ankle = (line_positions_dict[27][0], line_positions_dict[27][1])
+        shoulder_pos = (line_positions_dict[11][0], line_positions_dict[11][1])
         a,b,c = get_knee_lengths(hip=hip,knee=knee,ankle=ankle)
         d,e,f = get_body_lengths(hip=hip,shoulder=shoulder_pos,knee=knee)
         knee_angle = round(find_angle(a,b,c)*(180/math.pi),3)
         body_angle = round(find_angle(d,e,f)*(180/math.pi),3)
-    cv2.putText(img, f"Knee angle: {knee_angle}", (300, 50), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
-    cv2.putText(img, f"Body angle: {body_angle}", (300, 100), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
+    max_knee_glitch = max(max_knee_glitch, knee_angle - prev_knee_angle)
+    max_body_glitch = max(max_body_glitch, body_angle - prev_body_angle)
+    if ended_stroke and stroke_count > 1: # Cycle through alphas here
+        a_idx += 1
+        glitches[curr_alpha] = (round(max_knee_glitch,2),round(max_body_glitch,2))
+        max_knee_glitch = 0
+        max_body_glitch = 0
+        print(f"(knee,body) glitch at a={round(curr_alpha,3)}: {glitches[curr_alpha]}")
+    cv2.putText(img, f"Knee angle: {knee_angle}", (70, 50), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
+    cv2.putText(img, f"Body angle: {body_angle}", (70, 100), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
+    if a_idx > 0:
+        cv2.putText(img, f"Stroke variance: {glitches[alphas[a_idx - 1]]}", (70, 150), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
+        cv2.putText(img, f"Stroke alpha: {round(alphas[a_idx - 1],3)}", (70, 200), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
     cv2.imshow("Image", img)
     cv2.waitKey(1)
     frame_idx += 1
+    prev_knee_angle = knee_angle
+    prev_body_angle = body_angle
 
