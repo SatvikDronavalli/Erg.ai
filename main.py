@@ -168,7 +168,7 @@ while True:
         # knee sector graphing
         len_knee_to_hip = abs(math.dist(knee,hip))
         len_knee_to_ankle = abs(math.dist(knee,ankle))
-        radius = min(len_knee_to_hip,len_knee_to_ankle)/3
+        radius_k = min(len_knee_to_hip,len_knee_to_ankle)/3
         if ankle[0] < knee[0]:
             x_axis_length = math.dist(knee, (knee[0] - (knee[0] - ankle[0]), knee[1]))
             initial_angle = 180 - (math.acos(x_axis_length / len_knee_to_ankle) * (180 / math.pi))
@@ -178,9 +178,26 @@ while True:
         INITIAL_ANGLE_OFFSET = 1.25
         ARC_ANGLE_OFFSET = 2
         overlay = img.copy()
-        cv2.ellipse(img,knee,(round(radius),round(radius)),initial_angle+INITIAL_ANGLE_OFFSET,0,knee_angle-ARC_ANGLE_OFFSET,(160,170,80),-1)
+        cv2.ellipse(img,knee,(round(radius_k),round(radius_k)),initial_angle+INITIAL_ANGLE_OFFSET,0,knee_angle-ARC_ANGLE_OFFSET,(160,170,80),-1)
+        ANGLE_INDICATOR_DISTANCE = 1.5
+        TEXT_OFFSET = 300
+        (size,baseline) = cv2.getTextSize(f"Knee angle: {knee_angle}",cv2.FONT_HERSHEY_PLAIN,2,3)
+        text_w,text_h = size
+        text_pos_x = max(0,knee[0] + round(ANGLE_INDICATOR_DISTANCE*radius_k*math.cos((initial_angle+(knee_angle/2))*(math.pi/180))) - int(text_w/2))
+        text_pos_y = max(0, knee[1] + round(ANGLE_INDICATOR_DISTANCE*radius_k*math.sin((initial_angle+(knee_angle/2))*(math.pi/180))))
+        # body sector graphing
+        '''
+        len_hip_to_shoulder = abs(math.dist(hip,shoulder_pos))
+        radius_h = min(len_hip_to_shoulder,len_knee_to_hip)
+        if knee[1] > ankle[1]:
+            x_axis_length = math.dist(knee,) '''
         TRANSPARENCY_ALPHA = 0.4
         translucent_arc = cv2.addWeighted(overlay,TRANSPARENCY_ALPHA,img,1-TRANSPARENCY_ALPHA,0,img)
+        cv2.putText(img, f"Knee angle: {knee_angle}", (text_pos_x, text_pos_y), cv2.FONT_HERSHEY_PLAIN, 2, (245, 245, 245),
+                    3)
+        cv2.putText(img, f"Knee angle: {knee_angle}", (text_pos_x+2, text_pos_y+2), cv2.FONT_HERSHEY_PLAIN, 2,
+                    (0, 0, 0),
+                    1)
     elif curr_pose_list == left_pose_list:
         hip = (line_positions_dict[23][0], line_positions_dict[23][1])
         knee = (line_positions_dict[25][0], line_positions_dict[25][1])
@@ -197,12 +214,12 @@ while True:
         glitches[curr_alpha] = (round(max_knee_glitch,2),round(max_body_glitch,2))
         max_knee_glitch = 0
         max_body_glitch = 0
-        print(f"(knee,body) glitch at a={round(curr_alpha,3)}: {glitches[curr_alpha]}")
+        # print(f"(knee,body) glitch at a={round(curr_alpha,3)}: {glitches[curr_alpha]}")
     cv2.putText(img, f"Knee angle: {knee_angle}", (70, 50), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
     cv2.putText(img, f"Body angle: {body_angle}", (70, 100), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
     if a_idx > 0:
         cv2.putText(img, f"Stroke variance: {glitches[alphas[a_idx - 1]]}", (70, 150), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
-        #v2.putText(img, f"Stroke alpha: {round(alphas[a_idx - 1],3)}", (70, 200), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
+        cv2.putText(img, f"Stroke alpha: {round(alphas[a_idx - 1],3)}", (70, 200), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
     cv2.imshow("Image", img)
     cv2.waitKey(1)
     frame_idx += 1
