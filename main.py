@@ -1,7 +1,5 @@
 import mediapipe as mp
 import cv2
-import time
-import keyboard
 import math
 
 cap = cv2.VideoCapture('videos/satvik_erg.MOV')
@@ -46,8 +44,17 @@ def find_angle(a,b,c):
     right_side = (a**2 - b**2 + c**2)/(2*a*c)
     return math.acos(right_side)
 
+def find_point_on_line(start,end,pct=0.25):
+        y2 = end[2], y1 = start[2], x2 = end[1], x1 = start[1]
+        m = (y2-y1)/(x2-x1)
+        f = lambda x: m*(x-x1)+y1
+        x_f = x1+pct*(x2-x1)
+        y_f = f(x_f)
+        return (x_f, y_f), pct*abs(math.dist(start,end))
+
+
 def exponential_moving_average(cx,cy,px,py,a=0.3):
-    #TODO: Tune alpha
+    # From testing, a=0.3 minimized knee + body angle variance
     return int(cx*a+px*(1-a)),int(cy*a+py*(1-a))
 
 alphas = [0.2+i*0.025 for i in range(0,11)] # 10 strokes in test video
@@ -158,6 +165,14 @@ while True:
         d,e,f = get_body_lengths(hip=hip,shoulder=shoulder_pos,knee=knee)
         knee_angle = round(find_angle(a,b,c)*(180/math.pi),3)
         body_angle = round(find_angle(d,e,f)*(180/math.pi),3)
+        # knee sector graphing
+        len_knee_to_hip = abs(math.dist(knee,hip))
+        len_knee_to_ankle = abs(math.dist(knee,ankle))
+        radius = min(len_knee_to_hip,len_knee_to_ankle)/2
+        x_axis_length = math.dist(knee,(knee[0]+(ankle[0]-knee[0]),knee[1]))
+        initial_angle = math.acos(x_axis_length/len_knee_to_ankle)*(180/math.pi)
+        print(initial_angle)
+        cv2.ellipse(img,knee,(round(radius),round(radius)),initial_angle,0,knee_angle,(0,255,0),-1)
     elif curr_pose_list == left_pose_list:
         hip = (line_positions_dict[23][0], line_positions_dict[23][1])
         knee = (line_positions_dict[25][0], line_positions_dict[25][1])
