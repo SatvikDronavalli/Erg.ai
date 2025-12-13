@@ -69,7 +69,7 @@ a_idx = 0
 ended_stroke = False
 
 while True:
-    curr_alpha = alphas[a_idx]
+    curr_alpha = 0.275 # alphas[a_idx]
     ended_stroke = False
     success, img = cap.read()
     if not success:
@@ -168,11 +168,19 @@ while True:
         # knee sector graphing
         len_knee_to_hip = abs(math.dist(knee,hip))
         len_knee_to_ankle = abs(math.dist(knee,ankle))
-        radius = min(len_knee_to_hip,len_knee_to_ankle)/2
-        x_axis_length = math.dist(knee,(knee[0]+(ankle[0]-knee[0]),knee[1]))
-        initial_angle = math.acos(x_axis_length/len_knee_to_ankle)*(180/math.pi)
-        print(initial_angle)
-        cv2.ellipse(img,knee,(round(radius),round(radius)),initial_angle,0,knee_angle,(0,255,0),-1)
+        radius = min(len_knee_to_hip,len_knee_to_ankle)/3
+        if ankle[0] < knee[0]:
+            x_axis_length = math.dist(knee, (knee[0] - (knee[0] - ankle[0]), knee[1]))
+            initial_angle = 180 - (math.acos(x_axis_length / len_knee_to_ankle) * (180 / math.pi))
+        else:
+            x_axis_length = math.dist(knee,(knee[0]+(ankle[0]-knee[0]),knee[1]))
+            initial_angle = math.acos(x_axis_length/len_knee_to_ankle)*(180/math.pi)
+        INITIAL_ANGLE_OFFSET = 1.25
+        ARC_ANGLE_OFFSET = 2
+        overlay = img.copy()
+        cv2.ellipse(img,knee,(round(radius),round(radius)),initial_angle+INITIAL_ANGLE_OFFSET,0,knee_angle-ARC_ANGLE_OFFSET,(160,170,80),-1)
+        TRANSPARENCY_ALPHA = 0.4
+        translucent_arc = cv2.addWeighted(overlay,TRANSPARENCY_ALPHA,img,1-TRANSPARENCY_ALPHA,0,img)
     elif curr_pose_list == left_pose_list:
         hip = (line_positions_dict[23][0], line_positions_dict[23][1])
         knee = (line_positions_dict[25][0], line_positions_dict[25][1])
@@ -185,7 +193,7 @@ while True:
     max_knee_glitch = max(max_knee_glitch, knee_angle - prev_knee_angle)
     max_body_glitch = max(max_body_glitch, body_angle - prev_body_angle)
     if ended_stroke and stroke_count > 1: # Cycle through alphas here
-        a_idx += 1
+        # a_idx += 1
         glitches[curr_alpha] = (round(max_knee_glitch,2),round(max_body_glitch,2))
         max_knee_glitch = 0
         max_body_glitch = 0
@@ -194,7 +202,7 @@ while True:
     cv2.putText(img, f"Body angle: {body_angle}", (70, 100), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
     if a_idx > 0:
         cv2.putText(img, f"Stroke variance: {glitches[alphas[a_idx - 1]]}", (70, 150), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
-        cv2.putText(img, f"Stroke alpha: {round(alphas[a_idx - 1],3)}", (70, 200), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
+        #v2.putText(img, f"Stroke alpha: {round(alphas[a_idx - 1],3)}", (70, 200), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
     cv2.imshow("Image", img)
     cv2.waitKey(1)
     frame_idx += 1
