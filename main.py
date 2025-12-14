@@ -1,8 +1,10 @@
 import mediapipe as mp
 import cv2
 import math
+import time
 
-cap = cv2.VideoCapture('videos/satvik_erg.MOV')
+path = 'videos/satvik_erg.MOV'
+cap = cv2.VideoCapture(path)
 fps = cap.get(cv2.CAP_PROP_FPS)
 mpPose = mp.solutions.pose
 mpDraw = mp.solutions.drawing_utils
@@ -58,6 +60,23 @@ def exponential_moving_average(cx,cy,px,py,a=0.3):
     # From testing, a=0.3 minimized knee + body angle variance
     return int(cx*a+px*(1-a)),int(cy*a+py*(1-a))
 
+def determine_right(results,sensitivity=0.75):
+    # right_pose_list = [12,14,16,18,24,26,28]
+    baseline = sensitivity*6
+    right_confidence_sum = 0
+    left_confidence_sum = 0
+    for id, lm in enumerate(results.pose_landmarks.landmark):
+        if id in right_pose_list:
+            right_confidence_sum += lm.visibility
+        elif id in left_pose_list:
+            left_confidence_sum += lm.visibility
+    if max(right_confidence_sum,left_confidence_sum) < baseline:
+        return -1
+    if right_confidence_sum < left_confidence_sum:
+        return 0
+    else:
+        return 1
+
 alphas = [0.2+i*0.025 for i in range(0,11)] # 10 strokes in test video
 glitches = dict()
 max_knee_glitch = -1
@@ -68,36 +87,33 @@ prev_body_angle = 0
 body_angle = 0
 a_idx = 0
 ended_stroke = False
-
+valid_detection = False
+FLIP_CODE = 0
+shoulder = 12
 while True:
     curr_alpha = 0.275 # alphas[a_idx]
     ended_stroke = False
     success, img = cap.read()
     if not success:
         break
-    img = cv2.flip(img,-1)
+    if path.lower().endswith(".mov"):
+        img = cv2.rotate(img, cv2.ROTATE_180)
+    # img = cv2.flip(img, 1)
+    if FLIP_CODE:
+        img = cv2.flip(img,FLIP_CODE)
     img = cv2.resize(img, (1700,1000))
     imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     results = pose.process(imgRGB)
     if results.pose_landmarks:
-        if not left_visibility and not right_visibility:
-            for id, lm in enumerate(results.pose_landmarks.landmark):
-                if id == 25:
-                    left_visibility = lm.visibility
-                elif id == 26:
-                    right_visibility = lm.visibility
-                if (left_visibility and right_visibility) and right_visibility > left_visibility:
-                    curr_pose_list = right_pose_list
-                    curr_connections = right_connections
-                    shoulder = 12
-                    break
-                elif left_visibility and right_visibility:
-                    curr_pose_list = left_pose_list
-                    curr_connections = left_connections
-                    shoulder = 11
-                    break
-        if not curr_pose_list:
-            break
+        # Add check here (stall with continues)
+        if not valid_detection and determine_right(results) == -1:
+            continue
+        elif determine_right(results) == 0:
+            FLIP_CODE = 1
+            valid_detection = True
+            continue
+        else:
+            valid_detection = True
        # mpDraw.draw_landmarks(img, results.pose_landmarks,mpPose.POSE_CONNECTIONS)
         for id, lm in enumerate(results.pose_landmarks.landmark):
             h,w,c = img.shape
@@ -106,7 +122,7 @@ while True:
                 px,py = prev_positions_ema[id]
                 cx,cy = exponential_moving_average(cx,cy,px,py,curr_alpha)
             line_positions_dict.update({id: (cx,cy)})
-            if id in curr_pose_list:
+            if id in right_pose_list:
                 # print(id, lm.visibility)
                 cv2.circle(img, (cx,cy), 10, (255,0,0),cv2.FILLED)
                 if not finish:
@@ -138,7 +154,7 @@ while True:
                                 catch_frame = frame_idx
                                 catch = True
             prev_positions_ema[id] = (cx,cy)
-        for i,f in curr_connections:
+        for i,f in right_connections:
             i_cx,i_cy = line_positions_dict[i]
             f_cx,f_cy = line_positions_dict[f]
             cv2.line(img,(i_cx,i_cy),(f_cx,f_cy),(0,255,0),5)
@@ -158,88 +174,72 @@ while True:
     # Add circle sector graphing here
     h,w,c = img.shape
     VERT_SCALE = 1.2
-    if curr_pose_list == right_pose_list:
-        hip = (line_positions_dict[24][0],line_positions_dict[24][1])
-        knee = (line_positions_dict[26][0],line_positions_dict[26][1])
-        ankle = (line_positions_dict[28][0],line_positions_dict[28][1])
-        shoulder_pos = (line_positions_dict[12][0],line_positions_dict[12][1])
-        if not first_frame:
-            first_frame = True
-            initial_height = round(line_positions_dict[24][1] + VERT_SCALE*(line_positions_dict[12][1]-line_positions_dict[24][1]))
-        ghost_body_pos = (line_positions_dict[24][0],initial_height)
-        a,b,c = get_knee_lengths(hip=hip,knee=knee,ankle=ankle)
-        d,e = get_body_lengths(hip=hip,shoulder=shoulder_pos)
-        knee_angle = round(find_angle(a,b,c)*(180/math.pi),1)
-        if shoulder_pos[0] > hip[0]:
-            body_direction = 1
-        elif shoulder_pos[0] == hip[0]:
-            body_direction = 0
-        else:
-            body_direction = -1
-        body_angle = round((180-round(math.acos(e / d) * (180 / math.pi), 3)),1)*body_direction
-        # knee sector graphing
-        SECTOR_RADIUS_DIVISOR = 3
-        len_knee_to_hip = abs(math.dist(knee,hip))
-        len_knee_to_ankle = abs(math.dist(knee,ankle))
-        len_hip_to_shoulder = abs(math.dist(hip,shoulder_pos))
-        len_hip_to_ghost = abs(math.dist(hip,ghost_body_pos))
-        radius_k = min(len_knee_to_hip,len_knee_to_ankle)/SECTOR_RADIUS_DIVISOR
-        radius_h = min(len_hip_to_shoulder,len_hip_to_ghost)/SECTOR_RADIUS_DIVISOR
-        if ankle[0] < knee[0]:
-            x_axis_length = math.dist(knee, (knee[0] - (knee[0] - ankle[0]), knee[1]))
-            initial_angle = 180 - (math.acos(x_axis_length / len_knee_to_ankle) * (180 / math.pi))
-        else:
-            x_axis_length = math.dist(knee,(knee[0]+(ankle[0]-knee[0]),knee[1]))
-            initial_angle = math.acos(x_axis_length/len_knee_to_ankle)*(180/math.pi)
-        INITIAL_ANGLE_OFFSET = 1.25
-        ARC_ANGLE_OFFSET = 2
-        overlay = img.copy()
-        cv2.ellipse(img,knee,(round(radius_k),round(radius_k)),initial_angle+INITIAL_ANGLE_OFFSET,0,knee_angle-ARC_ANGLE_OFFSET,(160,170,80),-1)
-        cv2.ellipse(img, hip, (round(radius_h), round(radius_h)), -90 + INITIAL_ANGLE_OFFSET, 0,
-                    body_angle - ARC_ANGLE_OFFSET, (160, 170, 80), -1)
-        make_vert_dashed_line(4,2,hip,ghost_body_pos,img,(0,255,0),5)
-        ANGLE_INDICATOR_DISTANCE = 1.5
-        TEXT_OFFSET = 300
-        (size,baseline) = cv2.getTextSize(f"Knee angle: {knee_angle}",cv2.FONT_HERSHEY_PLAIN,2,3)
-        text_w_k,text_h_k = size
-        (size_b, baseline_b) = cv2.getTextSize(f"Body angle: {body_angle}", cv2.FONT_HERSHEY_PLAIN, 2, 3)
-        text_w_b, text_h_b = size_b
-        text_pos_x_k = max(0,knee[0] + round(ANGLE_INDICATOR_DISTANCE*radius_k*math.cos((initial_angle+(knee_angle/2))*(math.pi/180))) - int(text_w_k/2))
-        text_pos_y_k = max(0, knee[1] + round(ANGLE_INDICATOR_DISTANCE*radius_k*math.sin((initial_angle+(knee_angle/2))*(math.pi/180))))
-        text_pos_x_h = max(0, hip[0] + round(
-            ANGLE_INDICATOR_DISTANCE * radius_h * math.cos(((body_angle / 2) - 90) * (math.pi / 180))) - int(
-            text_w_b / 2))
-        text_pos_y_h = max(0, hip[1] + round(
-            ANGLE_INDICATOR_DISTANCE * radius_h * math.sin(((body_angle / 2) - 90) * (math.pi / 180))))
-        # body sector graphing
-        '''
-        len_hip_to_shoulder = abs(math.dist(hip,shoulder_pos))
-        radius_h = min(len_hip_to_shoulder,len_knee_to_hip)
-        if knee[1] > ankle[1]:
-            x_axis_length = math.dist(knee,) '''
-        TRANSPARENCY_ALPHA = 0.5
-        translucent_arc = cv2.addWeighted(overlay,TRANSPARENCY_ALPHA,img,1-TRANSPARENCY_ALPHA,0,img)
-        cv2.putText(img, f"Knee angle: {knee_angle}", (text_pos_x_k, text_pos_y_k), cv2.FONT_HERSHEY_PLAIN, 2, (245, 245, 245),
-                    3)
-        cv2.putText(img, f"Knee angle: {knee_angle}", (text_pos_x_k+2, text_pos_y_k+2), cv2.FONT_HERSHEY_PLAIN, 2,
-                    (0, 0, 0),
-                    1)
-        cv2.putText(img, f"Body angle: {body_angle}", (text_pos_x_h, text_pos_y_h), cv2.FONT_HERSHEY_PLAIN, 2,
-                    (245, 245, 245),
-                    3)
-        cv2.putText(img, f"Body angle: {body_angle}", (text_pos_x_h + 2, text_pos_y_h + 2), cv2.FONT_HERSHEY_PLAIN,
-                    2,
-                    (0, 0, 0),
-                    1)
-    elif curr_pose_list == left_pose_list: #TODO: patch this side
-        hip = (line_positions_dict[23][0], line_positions_dict[23][1])
-        knee = (line_positions_dict[25][0], line_positions_dict[25][1])
-        ankle = (line_positions_dict[27][0], line_positions_dict[27][1])
-        shoulder_pos = (line_positions_dict[11][0], line_positions_dict[11][1])
-        a,b,c = get_knee_lengths(hip=hip,knee=knee,ankle=ankle)
-        d,e = get_body_lengths(hip=hip,shoulder=shoulder_pos,knee=knee)
-        knee_angle = round(find_angle(a,b,c)*(180/math.pi),3)
-        body_angle = round(find_angle(d,e,f)*(180/math.pi),3)
+    hip = (line_positions_dict[24][0],line_positions_dict[24][1])
+    knee = (line_positions_dict[26][0],line_positions_dict[26][1])
+    ankle = (line_positions_dict[28][0],line_positions_dict[28][1])
+    shoulder_pos = (line_positions_dict[12][0],line_positions_dict[12][1])
+    if not first_frame:
+        first_frame = True
+        initial_height = round(line_positions_dict[24][1] + VERT_SCALE*(line_positions_dict[12][1]-line_positions_dict[24][1]))
+    ghost_body_pos = (line_positions_dict[24][0],initial_height)
+    a,b,c = get_knee_lengths(hip=hip,knee=knee,ankle=ankle)
+    d,e = get_body_lengths(hip=hip,shoulder=shoulder_pos)
+    knee_angle = round(find_angle(a,b,c)*(180/math.pi),1)
+    if shoulder_pos[0] > hip[0]:
+        body_direction = 1
+    elif shoulder_pos[0] == hip[0]:
+        body_direction = 0
+    else:
+        body_direction = -1
+    body_angle = round((180-round(math.acos(e / d) * (180 / math.pi), 3)),1)*body_direction
+    # knee sector graphing
+    SECTOR_RADIUS_DIVISOR = 3
+    len_knee_to_hip = abs(math.dist(knee,hip))
+    len_knee_to_ankle = abs(math.dist(knee,ankle))
+    len_hip_to_shoulder = abs(math.dist(hip,shoulder_pos))
+    len_hip_to_ghost = abs(math.dist(hip,ghost_body_pos))
+    radius_k = min(len_knee_to_hip,len_knee_to_ankle)/SECTOR_RADIUS_DIVISOR
+    radius_h = min(len_hip_to_shoulder,len_hip_to_ghost)/SECTOR_RADIUS_DIVISOR
+    if ankle[0] < knee[0]:
+        x_axis_length = math.dist(knee, (knee[0] - (knee[0] - ankle[0]), knee[1]))
+        initial_angle = 180 - (math.acos(x_axis_length / len_knee_to_ankle) * (180 / math.pi))
+    else:
+        x_axis_length = math.dist(knee,(knee[0]+(ankle[0]-knee[0]),knee[1]))
+        initial_angle = math.acos(x_axis_length/len_knee_to_ankle)*(180/math.pi)
+    INITIAL_ANGLE_OFFSET = 1.25
+    ARC_ANGLE_OFFSET = 2
+    overlay = img.copy()
+    cv2.ellipse(img,knee,(round(radius_k),round(radius_k)),initial_angle+INITIAL_ANGLE_OFFSET,0,knee_angle-ARC_ANGLE_OFFSET,(160,170,80),-1)
+    cv2.ellipse(img, hip, (round(radius_h), round(radius_h)), -90 + INITIAL_ANGLE_OFFSET, 0,
+                body_angle - ARC_ANGLE_OFFSET, (160, 170, 80), -1)
+    make_vert_dashed_line(4,2,hip,ghost_body_pos,img,(0,255,0),5)
+    ANGLE_INDICATOR_DISTANCE = 1.5
+    TEXT_OFFSET = 300
+    (size,baseline) = cv2.getTextSize(f"Knee angle: {knee_angle}",cv2.FONT_HERSHEY_PLAIN,2,3)
+    text_w_k,text_h_k = size
+    (size_b, baseline_b) = cv2.getTextSize(f"Body angle: {body_angle}", cv2.FONT_HERSHEY_PLAIN, 2, 3)
+    text_w_b, text_h_b = size_b
+    text_pos_x_k = max(0,knee[0] + round(ANGLE_INDICATOR_DISTANCE*radius_k*math.cos((initial_angle+(knee_angle/2))*(math.pi/180))) - int(text_w_k/2))
+    text_pos_y_k = max(0, knee[1] + round(ANGLE_INDICATOR_DISTANCE*radius_k*math.sin((initial_angle+(knee_angle/2))*(math.pi/180))))
+    text_pos_x_h = max(0, hip[0] + round(
+        ANGLE_INDICATOR_DISTANCE * radius_h * math.cos(((body_angle / 2) - 90) * (math.pi / 180))) - int(
+        text_w_b / 2))
+    text_pos_y_h = max(0, hip[1] + round(
+        ANGLE_INDICATOR_DISTANCE * radius_h * math.sin(((body_angle / 2) - 90) * (math.pi / 180))))
+    TRANSPARENCY_ALPHA = 0.5
+    translucent_arc = cv2.addWeighted(overlay,TRANSPARENCY_ALPHA,img,1-TRANSPARENCY_ALPHA,0,img)
+    cv2.putText(img, f"Knee angle: {knee_angle}", (text_pos_x_k, text_pos_y_k), cv2.FONT_HERSHEY_PLAIN, 2, (245, 245, 245),
+                3)
+    cv2.putText(img, f"Knee angle: {knee_angle}", (text_pos_x_k+2, text_pos_y_k+2), cv2.FONT_HERSHEY_PLAIN, 2,
+                (0, 0, 0),
+                1)
+    cv2.putText(img, f"Body angle: {body_angle}", (text_pos_x_h, text_pos_y_h), cv2.FONT_HERSHEY_PLAIN, 2,
+                (245, 245, 245),
+                3)
+    cv2.putText(img, f"Body angle: {body_angle}", (text_pos_x_h + 2, text_pos_y_h + 2), cv2.FONT_HERSHEY_PLAIN,
+                2,
+                (0, 0, 0),
+                1)
     max_knee_glitch = max(max_knee_glitch, knee_angle - prev_knee_angle)
     max_body_glitch = max(max_body_glitch, body_angle - prev_body_angle)
     if ended_stroke and stroke_count > 1: # Cycle through alphas here
@@ -258,4 +258,5 @@ while True:
     frame_idx += 1
     prev_knee_angle = knee_angle
     prev_body_angle = body_angle
+    # 0.086 seconds per frame for left side, 0.068 for right side
 
