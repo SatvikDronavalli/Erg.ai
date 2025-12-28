@@ -13,15 +13,18 @@ with open('ten_strokes.json', 'r') as file:
 
 
 poses_list = strokes[0]
+def process_poses(poses_list): # Used for graphing purposes
+    global poses_x
+    global poses_y
+    poses_x = [[i[0] for i in poses_list[p]] for p in map(str,[12,14,16,18,24,26,28])]
+    for i in range(len(poses_x)):
+        poses_x[i] = normalize_t(poses_x[i])
+    poses_y = [[i[1] for i in poses_list[p]] for p in map(str,[12,14,16,18,24,26,28])]
+    for i in range(len(poses_y)):
+        poses_y[i] = normalize_t(poses_y[i])
+    return poses_x, poses_y
 
-
-poses_x = [[i[0] for i in poses_list[p]] for p in map(str,[12,14,16,18,24,26,28])]
-for i in range(len(poses_x)):
-    poses_x[i] = normalize_t(poses_x[i])
-poses_y = [[i[1] for i in poses_list[p]] for p in map(str,[12,14,16,18,24,26,28])]
-for i in range(len(poses_y)):
-    poses_y[i] = normalize_t(poses_y[i])
-
+poses_x, poses_y = process_poses(poses_list)
 
 def update(i):
     if i < len(poses_x[0]):
