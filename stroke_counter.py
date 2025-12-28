@@ -1,6 +1,7 @@
 import mediapipe as mp
 import cv2
 import json
+import os
 
 '''
 TODO:
@@ -18,6 +19,7 @@ def check_validity(path):
     # Environment setup
 
     cap = cv2.VideoCapture(path)
+
     fps = cap.get(cv2.CAP_PROP_FPS)
     mpPose = mp.solutions.pose
     pose = mpPose.Pose(min_detection_confidence=0.85,min_tracking_confidence=0.85)
@@ -44,7 +46,6 @@ def check_validity(path):
     r_px = None
     r_py = None
     # Loop for video processing
-
     while True:
         if stroke_count >= 10:  # Heuristic, 10 contiguous strokes
             ten_good_strokes = temp
@@ -53,7 +54,7 @@ def check_validity(path):
         if not success or img is None:
             break # End of video
 
-        img = cv2.flip(img,-1)
+        # img = cv2.flip(img,-1)
         scale_width = 640
         h,w,_ = img.shape
         scale_height = int(h * scale_width / w)
@@ -157,6 +158,16 @@ def check_validity(path):
         r_py = r_cy
     return []
 
-val = check_validity("test_dir/test_vid_1")
+val = check_validity("test_dir/2000m Row in 6:40 Row Along | Real Time Tips.mp4")
+j_path = "ten_strokes.json"
+j_data = None
+if os.path.getsize(j_path) > 0:
+    with open(j_path, 'r') as inputs:
+        j_data = json.load(inputs)
+else:
+    with open(j_path, 'w') as output:
+        json.dump([], output)
+        j_data = []
+j_data.append(val)
 with open("ten_strokes.json", 'w') as output:
-    j_string = json.dump(val, output)
+    j_string = json.dump(j_data, output, indent=2)
