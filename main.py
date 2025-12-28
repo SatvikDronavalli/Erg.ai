@@ -1,9 +1,9 @@
 import mediapipe as mp
 import cv2
 import math
-import time
+import numpy as np
 print(mp.__file__)
-path = 'test_dir/test_vid_1'
+path = 'IMG_8946.MOV'
 cap = cv2.VideoCapture(path)
 fps = cap.get(cv2.CAP_PROP_FPS)
 mpPose = mp.solutions.pose
@@ -56,6 +56,24 @@ def make_vert_dashed_line(dashes,GAP_MULTIPLIER,start,end,img,color,thickness):
         start_seg_y = round(start[1]+((i-1)*(dist_y+dist_y*GAP_MULTIPLIER)))
         end_seg_y = round(start_seg_y+dist_y)
         cv2.line(img,(start[0],start_seg_y),(start[0],end_seg_y),color,thickness)
+
+def normalize_t(y_old):
+    x_old = np.linspace(0, 1, len(y_old))
+    x_new = np.linspace(0, 1, 100)
+    return np.interp(x_new, x_old, y_old)
+
+def process_poses(poses_list):
+    # outputs normalized lists with x and y coordinate positions
+    global poses_x
+    global poses_y
+    poses_x = [[i[0] for i in poses_list[p]] for p in [12,14,16,18,24,26,28]]
+    for i in range(len(poses_x)):
+        poses_x[i] = normalize_t(poses_x[i])
+    poses_y = [[i[1] for i in poses_list[p]] for p in [12,14,16,18,24,26,28]]
+    for i in range(len(poses_y)):
+        poses_y[i] = normalize_t(poses_y[i])
+    return poses_x, poses_y
+
 
 def draw_pose_graph(img, hip, knee, ankle, shoulder_pos, ghost_body_pos, knee_angle, body_angle):
     SECTOR_RADIUS_DIVISOR = 3
@@ -178,11 +196,14 @@ while True:
     success, img = cap.read()
     if not success:
         break
-    if path.lower().endswith(".mov"):
+    if path.lower().endswith(".mov") and not valid_detection:
+        valid_detection = True
         img = cv2.rotate(img, cv2.ROTATE_180)
+        continue
     # img = cv2.flip(img, 1)
     if FLIP_CODE:
         img = cv2.flip(img,FLIP_CODE)
+        continue
     img = cv2.resize(img, (1700,1000))
     imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     results = pose.process(imgRGB)
@@ -192,7 +213,7 @@ while True:
         # Add check here (stall with continues)
         if not valid_detection and determine_right(results) == -1:
             continue
-        elif determine_right(results) == 0:
+        elif determine_right(results) == 0 and not valid_detection:
             FLIP_CODE = 1
             valid_detection = True
             continue
@@ -244,7 +265,7 @@ while True:
             cv2.line(img,(i_cx,i_cy),(f_cx,f_cy),(0,255,0),5)
     else:
         continue
-    if catch and finish:
+    if catch and finish: # End of stroke
         stroke_rate = round(60*fps/((catch_frame-finish_frame) + (finish_frame-init_frame)),3)
         stroke_count += 1
         init_frame = frame_idx
@@ -252,16 +273,24 @@ while True:
         catch = False
         finish = False
         waited = 0
-        print(f"Distance traveled by shoulder: {round(max_shoulder_pos-min_shoulder_pos,3)*100} % of width")
+        # print(f"Distance traveled by shoulder: {round(max_shoulder_pos-min_shoulder_pos,3)*100} % of width")
         max_shoulder_pos = -1
         min_shoulder_pos = 10e99
+        poses_x, poses_y = process_poses(pos_locations_dict)
+        # TODO: Add comparison function here
+        pos_locations_dict = {}
+        
+        # TODO: Normalize stroke and compute similarity with avg youtube stroke
+        # TODO: Compute knee and body angles on normalized stroke data
     
-    # ------------------End of pose code------------------
+    
     if stroke_count:
         cv2.putText(img, f"Stroke rate: {stroke_rate}", (1200, 50), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
         cv2.putText(img, f"Stroke count: {stroke_count}", (1200, 100), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
     h,w,c = img.shape
+
     VERT_SCALE = 1.2
+    # ------------------Angle Calculations------------------
     hip = (line_positions_dict[24][0],line_positions_dict[24][1])
     knee = (line_positions_dict[26][0],line_positions_dict[26][1])
     ankle = (line_positions_dict[28][0],line_positions_dict[28][1])
@@ -280,7 +309,12 @@ while True:
     else:
         body_direction = -1
     body_angle = round((180-round(math.acos(e / d) * (180 / math.pi), 3)),1)*body_direction
-
+    # ------------------Angular Velocity Calculations------------------
+    t = 1/fps
+    body_angle_v = (body_angle-prev_body_angle)/t
+    knee_angle_v = (knee_angle-prev_knee_angle)/t
+    cv2.putText(img, f"Body angle velocity: {round(body_angle_v)}", (70, 100), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
+    cv2.putText(img, f"Knee angle velocity: {round(knee_angle_v)}", (70, 150), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
     # ------------------GRAPHING------------------
     draw_pose_graph(img, hip, knee, ankle, shoulder_pos, ghost_body_pos, knee_angle, body_angle)
     max_knee_glitch = max(max_knee_glitch, knee_angle - prev_knee_angle)
@@ -295,7 +329,7 @@ while True:
     # cv2.putText(img, f"Body angle: {body_angle}", (70, 100), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
     if a_idx > 0:
         cv2.putText(img, f"Stroke variance: {glitches[alphas[a_idx - 1]]}", (70, 150), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
-        cv2.putText(img, f"Stroke alpha: {rouend(alphas[a_idx - 1],3)}", (70, 200), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
+        cv2.putText(img, f"Stroke alpha: {round(alphas[a_idx - 1],3)}", (70, 200), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
     cv2.imshow("Image", img)
     cv2.waitKey(1)
     frame_idx += 1
