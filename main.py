@@ -1,8 +1,10 @@
 import mediapipe as mp
 import cv2
 import math
-import numpy as np
-print(mp.__file__)
+import json
+import os
+from toolbox import process_poses, stack_poses, compare_ref, absolute_to_relative
+
 path = 'IMG_8946.MOV'
 cap = cv2.VideoCapture(path)
 fps = cap.get(cv2.CAP_PROP_FPS)
@@ -56,24 +58,6 @@ def make_vert_dashed_line(dashes,GAP_MULTIPLIER,start,end,img,color,thickness):
         start_seg_y = round(start[1]+((i-1)*(dist_y+dist_y*GAP_MULTIPLIER)))
         end_seg_y = round(start_seg_y+dist_y)
         cv2.line(img,(start[0],start_seg_y),(start[0],end_seg_y),color,thickness)
-
-def normalize_t(y_old):
-    x_old = np.linspace(0, 1, len(y_old))
-    x_new = np.linspace(0, 1, 100)
-    return np.interp(x_new, x_old, y_old)
-
-def process_poses(poses_list):
-    # outputs normalized lists with x and y coordinate positions
-    global poses_x
-    global poses_y
-    poses_x = [[i[0] for i in poses_list[p]] for p in [12,14,16,18,24,26,28]]
-    for i in range(len(poses_x)):
-        poses_x[i] = normalize_t(poses_x[i])
-    poses_y = [[i[1] for i in poses_list[p]] for p in [12,14,16,18,24,26,28]]
-    for i in range(len(poses_y)):
-        poses_y[i] = normalize_t(poses_y[i])
-    return poses_x, poses_y
-
 
 def draw_pose_graph(img, hip, knee, ankle, shoulder_pos, ghost_body_pos, knee_angle, body_angle):
     SECTOR_RADIUS_DIVISOR = 3
@@ -176,6 +160,10 @@ def determine_right(results,sensitivity=0.75):
     else:
         return 1
 
+with open('ten_strokes.json', 'r') as file:
+    strokes = json.load(file)
+ref_stroke = strokes[0][1]
+
 alphas = [0.2+i*0.025 for i in range(0,11)] # 10 strokes in test video
 glitches = dict()
 max_knee_glitch = -1
@@ -220,8 +208,8 @@ while True:
         else:
             valid_detection = True
        # mpDraw.draw_landmarks(img, results.pose_landmarks,mpPose.POSE_CONNECTIONS)
+        h,w,c = img.shape
         for id, lm in enumerate(results.pose_landmarks.landmark):
-            h,w,c = img.shape
             cx,cy = int(lm.x*w),int(lm.y*h)
             if id in prev_positions_ema:
                 px,py = prev_positions_ema[id]
@@ -276,8 +264,27 @@ while True:
         # print(f"Distance traveled by shoulder: {round(max_shoulder_pos-min_shoulder_pos,3)*100} % of width")
         max_shoulder_pos = -1
         min_shoulder_pos = 10e99
+
         poses_x, poses_y = process_poses(pos_locations_dict)
+        user_list = stack_poses(poses_x,poses_y)
+        user_list = absolute_to_relative(user_list,h,w)
+        if stroke_count > 1:
+            compare_ref(user_list,ref_stroke)
+        j_data = None
+        j_path = 'user_strokes.json'
+        if os.path.getsize(j_path) > 0:
+            with open(j_path, 'r') as inputs:
+                j_data = json.load(inputs)
+        else:
+            with open(j_path, 'w') as output:
+                json.dump([], output)
+                j_data = []
+        j_data.append(user_list)
+        with open('user_strokes.json', 'w') as output:
+            json.dump(j_data, output, indent=2)
         # TODO: Add comparison function here
+
+        
         pos_locations_dict = {}
         
         # TODO: Normalize stroke and compute similarity with avg youtube stroke
@@ -313,8 +320,8 @@ while True:
     t = 1/fps
     body_angle_v = (body_angle-prev_body_angle)/t
     knee_angle_v = (knee_angle-prev_knee_angle)/t
-    cv2.putText(img, f"Body angle velocity: {round(body_angle_v)}", (70, 100), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
-    cv2.putText(img, f"Knee angle velocity: {round(knee_angle_v)}", (70, 150), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
+    cv2.putText(img, f"Body angle velocity: {round(body_angle_v)}", (70, 50), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
+    cv2.putText(img, f"Knee angle velocity: {round(knee_angle_v)}", (70, 100), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
     # ------------------GRAPHING------------------
     draw_pose_graph(img, hip, knee, ankle, shoulder_pos, ghost_body_pos, knee_angle, body_angle)
     max_knee_glitch = max(max_knee_glitch, knee_angle - prev_knee_angle)

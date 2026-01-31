@@ -42,6 +42,20 @@ def calc_angles(hip,knee,ankle,shoulder):
 
 # [12,14,16,18,24,26,28]
 
+
+
+
+
+#TODO: DEBUG ABSOLUTE TO RELATIVE!!!
+
+def absolute_to_relative(poses_list, width, height):
+    new_pose_list = {}
+    for p in poses_list:
+        new_pose_list[p] = []
+        for i in range(len(poses_list[p])):
+            new_pose_list[p].append((poses_list[p][i][0] / width, poses_list[p][i][1] / height))
+    return new_pose_list
+
 def normalize_t(y_old):
     x_old = np.linspace(0, 1, len(y_old))
     x_new = np.linspace(0, 1, 100)
@@ -50,10 +64,15 @@ def normalize_t(y_old):
 def process_poses(poses_list): # Used for graphing purposes
     global poses_x
     global poses_y
-    poses_x = [[i[0] for i in poses_list[p]] for p in map(str,[12,14,16,18,24,26,28])]
+    pose_list = []
+    if type(list(poses_list.keys())[0]) == int:
+        pose_list = [12,14,16,18,24,26,28]
+    else:
+        pose_list = ['12','14','16','18','24','26','28']
+    poses_x = [[i[0] for i in poses_list[p]] for p in pose_list]
     for i in range(len(poses_x)):
         poses_x[i] = normalize_t(poses_x[i])
-    poses_y = [[i[1] for i in poses_list[p]] for p in map(str,[12,14,16,18,24,26,28])]
+    poses_y = [[i[1] for i in poses_list[p]] for p in pose_list]
     for i in range(len(poses_y)):
         poses_y[i] = normalize_t(poses_y[i])
     return poses_x, poses_y # list of numpy arrays
@@ -67,6 +86,12 @@ def stack_poses(poses_x,poses_y):
             output[k].append((poses_x[idx][i], poses_y[idx][i]))
         idx += 1
     return output
+
+
+
+
+
+
 
 
 def compare_ref(pose_list, ref_list):
@@ -102,8 +127,10 @@ def compare_ref(pose_list, ref_list):
     print(f"Knee angle deviates {round(knee_rmse)}% from the reference stroke")
     print(f"Body angle deviates {round(body_rmse)}% from the reference stroke")
 
+'''
 p_x, p_y = process_poses(list1)
 list1 = stack_poses(p_x,p_y)
 p_x, p_y = process_poses(list2)
 list2 = stack_poses(p_x,p_y)
 compare_ref(list1, list2)
+'''

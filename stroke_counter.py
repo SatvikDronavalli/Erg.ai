@@ -3,12 +3,6 @@ import cv2
 import json
 import os
 
-'''
-TODO:
-- Improve glitch filtering with Exponential Moving Average
-- Determine how to extract youtube videos
-
-'''
 def exponential_moving_average(cx,cy,px,py,a=0.3):
     # From testing, a=0.3 minimized knee + body angle variance
     return int(cx*a+px*(1-a)),int(cy*a+py*(1-a))

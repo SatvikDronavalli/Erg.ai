@@ -3,24 +3,23 @@ from pytubefix.cli import on_progress
 import os
 import time
 import requests
-from check_validity import isValid
 
 # Library: https://pytubefix.readthedocs.io/en/latest/
-# url = "https://www.youtube.com/watch?v=jvXfxs0bTho"
+url = "https://www.youtube.com/watch?v=I40z-S4olHA&list=PL2lrNgnb31592s8xGwMd0JQzShjgE6bVV&index=4"
 path = "test_dir"
 os.makedirs(path, exist_ok=True)
 def download(url,path, id):
     yt = YouTube(url, on_progress_callback=on_progress)
     ys = yt.streams.get_highest_resolution()
-    # ys.download(output_path=path, filename=id)
-# download(url=url,path=path)
+    ys.download(output_path=path)
+download(url=url,path=path,id="test_vid_2")
 
 # ==========================
 # CONFIG
 # ==========================
 
 # API key @ https://console.cloud.google.com/apis/credentials?project=erging-video-retrieval
-
+'''
 API_KEY = os.environ.get("YOUTUBE_API_KEY")
 
 SEARCH_QUERIES = [
@@ -131,3 +130,4 @@ for i in list(videos.keys()):
         download(url,path,i)
     else:
         print(f"{videos[i]} is already in folder")
+'''
