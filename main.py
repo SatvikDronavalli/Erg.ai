@@ -5,7 +5,7 @@ import json
 import os
 from toolbox import process_poses, stack_poses, compare_ref, absolute_to_relative
 
-path = 'IMG_8946.MOV'
+path = 'Videos/satvik_erg.mp4'
 cap = cv2.VideoCapture(path)
 fps = cap.get(cv2.CAP_PROP_FPS)
 mpPose = mp.solutions.pose
@@ -234,7 +234,7 @@ while True:
                                 finish = True
                 elif finish and not catch:
                     pos_locations_dict[id].append((cx,cy))
-                    if waited < 10 and id == shoulder:
+                    if waited < 10 and id == shoulder: # Heuristic buffer to prevent ending stroke early
                         waited += 1
                     else:
                         if id == 12:
@@ -264,12 +264,9 @@ while True:
         # print(f"Distance traveled by shoulder: {round(max_shoulder_pos-min_shoulder_pos,3)*100} % of width")
         max_shoulder_pos = -1
         min_shoulder_pos = 10e99
-
-        poses_x, poses_y = process_poses(pos_locations_dict)
-        user_list = stack_poses(poses_x,poses_y)
-        user_list = absolute_to_relative(user_list,h,w)
-        if stroke_count > 1:
-            compare_ref(user_list,ref_stroke)
+        # print(len(pos_locations_dict[list(pos_locations_dict.keys())[0]]))
+        # if stroke_count > 1:
+            # compare_ref(user_list,ref_stroke)
         j_data = None
         j_path = 'user_strokes.json'
         if os.path.getsize(j_path) > 0:
@@ -279,7 +276,7 @@ while True:
             with open(j_path, 'w') as output:
                 json.dump([], output)
                 j_data = []
-        j_data.append(user_list)
+        j_data.append(pos_locations_dict)
         with open('user_strokes.json', 'w') as output:
             json.dump(j_data, output, indent=2)
         # TODO: Add comparison function here
@@ -315,7 +312,7 @@ while True:
         body_direction = 0
     else:
         body_direction = -1
-    body_angle = round((180-round(math.acos(e / d) * (180 / math.pi), 3)),1)*body_direction
+    body_angle = round((180-round(math.acos(e / d) * (180 / math.pi), 3)),1)*body_direction #TODO: append angles first??
     # ------------------Angular Velocity Calculations------------------
     t = 1/fps
     body_angle_v = (body_angle-prev_body_angle)/t

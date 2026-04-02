@@ -1,13 +1,9 @@
 import math
 import json
 import numpy as np
+import matplotlib.pyplot as plt
+
 #TODO: eventually move all helper functions here
-
-with open('ten_strokes.json', 'r') as file:
-    strokes = json.load(file)
-
-list1 = strokes[0][0]
-list2 = strokes[1][1]
 
 
 def get_knee_lengths(hip,knee,ankle):
@@ -82,17 +78,10 @@ def stack_poses(poses_x,poses_y):
     idx = 0
     for k in ['12','14','16','18','24','26','28']:
         output[k] = []
-        for i in range(len(poses_x)):
+        for i in range(len(poses_x[0])):
             output[k].append((poses_x[idx][i], poses_y[idx][i]))
         idx += 1
     return output
-
-
-
-
-
-
-
 
 def compare_ref(pose_list, ref_list):
     # For inputs, both are normalized to len(ref_list['24']) points
@@ -107,30 +96,95 @@ def compare_ref(pose_list, ref_list):
     r_knee = ref_list['26']
     r_ankle = ref_list['28']
     r_shoulder = ref_list['12']
+    p_knee_angles = []
+    p_body_angles = []
+    r_knee_angles = []
+    r_body_angles = []
     abs_knee_dist = []
     abs_body_dist = []
+    print(p_hip)
     for i in range(len(ref_list['24'])):
         p_knee_angle, p_body_angle = calc_angles(p_hip[i],p_knee[i],p_ankle[i],p_shoulder[i])
+        p_knee_angles.append(p_knee_angle)
+        p_body_angles.append(p_body_angle)
         r_knee_angle, r_body_angle = calc_angles(r_hip[i],r_knee[i],r_ankle[i],r_shoulder[i])
+        r_knee_angles.append(r_knee_angle)
+        r_body_angles.append(r_body_angle)
         abs_knee_dist.append(abs(p_knee_angle - r_knee_angle))
         abs_body_dist.append(abs(p_body_angle - r_body_angle))
     max_knee_diff = max(abs_knee_dist)
     max_knee_loc = abs_knee_dist.index(max_knee_diff)
     max_body_diff = max(abs_body_dist)
     max_body_loc = abs_body_dist.index(max_body_diff)
-    #TODO: Add rowing phase segmentation
+    #TODO: Add rowing phase segmentation using slide movement
     print(f"Peak knee angle deviation of {round(max_knee_diff)} degrees at {max_knee_loc}% of the stroke")
     print(f"Peak body angle deviation of {round(max_body_diff)} degrees at {max_body_loc}% of the stroke")
     # overall stroke variation
     knee_rmse = math.sqrt(sum(((abs_knee_dist[j])**2) for j in range(len(ref_list['24']))) / len(ref_list['24']))
-    body_rmse = math.sqrt(sum(((abs_knee_dist[j])**2) for j in range(len(ref_list['24']))) / len(ref_list['24']))
-    print(f"Knee angle deviates {round(knee_rmse)}% from the reference stroke")
-    print(f"Body angle deviates {round(body_rmse)}% from the reference stroke")
+    body_rmse = math.sqrt(sum(((abs_body_dist[j])**2) for j in range(len(ref_list['24']))) / len(ref_list['24']))
+    print(f"Knee angle deviates {round(knee_rmse)}% from the reference stroke on average")
+    print(f"Body angle deviates {round(body_rmse)}% from the reference stroke on average")
+    return p_knee_angles, p_body_angles, r_knee_angles, r_body_angles
+
+def calc_metrics(knee_user, body_user, knee_ref, body_ref):
+    # Initialization
+    user_body_finish_angle = min(body_user)
+    user_body_finish_time = body_user.index(user_body_finish_angle) + 1 # 1 indexed (1-100%)
+    ref_body_finish_angle = min(body_ref)
+    ref_body_finish_time = body_ref.index(ref_body_finish_angle) + 1
+    diff = user_body_finish_angle - ref_body_finish_angle # -diff: body farther back, +diff: body farther forward
+    THRESHOLD = 0.2  # tune as necessary
+    # User calculations
+    body_u_gradient = np.gradient(body_user)
+    extrema_u = np.where(abs(body_u_gradient) < THRESHOLD)[0]
+    candidates_u = extrema_u[extrema_u <= 25]
+    body_u_open_idx = candidates_u[-1] if len(candidates_u) > 0 else 0
+    body_u_open_vel = round((user_body_finish_angle - body_user[body_u_open_idx]) / (user_body_finish_time - body_u_open_idx), 2)
+    # Ref calculations
+    body_r_gradient = np.gradient(body_ref)
+    plt.plot(body_ref)
+    plt.plot(body_r_gradient)
+    plt.show()
+    extrema_r = np.where(abs(body_r_gradient) < THRESHOLD)[0]
+    candidates_r = extrema_r[extrema_r <= 25]
+    body_r_open_idx = candidates_r[-1] if len(candidates_r) > 0 else 0
+    body_r_open_vel = round((ref_body_finish_angle - body_ref[body_r_open_idx]) / (ref_body_finish_time - body_r_open_idx), 2)
+
+    print(body_u_open_vel, body_r_open_vel)
+
+
+if __name__ == '__main__':
+
+    with open('ten_strokes.json', 'r') as file:
+        strokes = json.load(file)
+
+    with open('user_strokes.json', 'r') as file:
+        user_strokes = json.load(file)
+
+    list1 = strokes[0][3]
+
+    list2 = user_strokes[3]
+
+    p_x, p_y = process_poses(list1)
+    list1 = stack_poses(p_x,p_y)
+    p_x, p_y = process_poses(list2)
+    list2 = stack_poses(p_x,p_y)
+
+    knee_u, body_u, knee_r, body_r = compare_ref(list2, list1)
+    calc_metrics(knee_u,body_u,knee_r,body_r)
+    '''
+    # plt.plot(body1)
+    plt.plot(body2)
+    plt.show()
+    plt.plot(knee1)
+    plt.plot(knee2)
+    plt.show() '''
 
 '''
-p_x, p_y = process_poses(list1)
-list1 = stack_poses(p_x,p_y)
-p_x, p_y = process_poses(list2)
-list2 = stack_poses(p_x,p_y)
-compare_ref(list1, list2)
+Metrics to calculate:
+- Body angle magnitude and index at finish
+    - Distance off reference stroke
+- Forward and backward body angle velocities
+- Peak knee angle timing
+
 '''
