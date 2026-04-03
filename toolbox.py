@@ -138,8 +138,10 @@ def calc_metrics(knee_user, body_user, knee_ref, body_ref):
     body_u_gradient = np.gradient(body_user)
     extrema_u = np.where(abs(body_u_gradient) < THRESHOLD)[0]
     candidates_u = extrema_u[extrema_u <= 25]
+    stable_u_b_finish_idx = extrema_u[extrema_u >= 60][0]
     body_u_open_idx = candidates_u[-1] if len(candidates_u) > 0 else 0
     body_u_open_vel = round((user_body_finish_angle - body_user[body_u_open_idx]) / (user_body_finish_time - body_u_open_idx), 2)
+    body_u_close_vel = round((body_user[stable_u_b_finish_idx] - user_body_finish_angle) / (stable_u_b_finish_idx - user_body_finish_time), 2)
     # Ref calculations
     body_r_gradient = np.gradient(body_ref)
     plt.plot(body_ref)
@@ -147,11 +149,17 @@ def calc_metrics(knee_user, body_user, knee_ref, body_ref):
     plt.show()
     extrema_r = np.where(abs(body_r_gradient) < THRESHOLD)[0]
     candidates_r = extrema_r[extrema_r <= 25]
+    stable_r_b_finish_idx = extrema_r[extrema_r >= 60][0]
     body_r_open_idx = candidates_r[-1] if len(candidates_r) > 0 else 0
     body_r_open_vel = round((ref_body_finish_angle - body_ref[body_r_open_idx]) / (ref_body_finish_time - body_r_open_idx), 2)
-
+    body_r_close_vel = round((body_ref[stable_r_b_finish_idx] - ref_body_finish_angle) / (stable_r_b_finish_idx - ref_body_finish_time), 2)
+    # Comparisons
     print(body_u_open_vel, body_r_open_vel)
-
+    print(body_u_close_vel, body_r_close_vel)
+    open_percent_diff = round((body_u_open_vel / body_r_open_vel) - 1, 3)
+    close_percent_diff = round((body_u_close_vel / body_r_close_vel) - 1, 3)
+    print(open_percent_diff * 100)
+    print(close_percent_diff * 100)
 
 if __name__ == '__main__':
 
@@ -180,7 +188,7 @@ if __name__ == '__main__':
     plt.plot(knee2)
     plt.show() '''
 
-'''
+''' 
 Metrics to calculate:
 - Body angle magnitude and index at finish
     - Distance off reference stroke
