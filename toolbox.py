@@ -1,7 +1,11 @@
 import math
 import json
 import numpy as np
+import os
 import matplotlib.pyplot as plt
+from openai import OpenAI
+
+
 
 #TODO: eventually move all helper functions here
 
@@ -37,10 +41,6 @@ def calc_angles(hip,knee,ankle,shoulder):
     return knee_angle,body_angle
 
 # [12,14,16,18,24,26,28]
-
-
-
-
 
 #TODO: DEBUG ABSOLUTE TO RELATIVE!!!
 
@@ -124,9 +124,9 @@ def compare_ref(pose_list, ref_list):
     body_rmse = math.sqrt(sum(((abs_body_dist[j])**2) for j in range(len(ref_list['24']))) / len(ref_list['24']))
     print(f"Knee angle deviates {round(knee_rmse)}% from the reference stroke on average")
     print(f"Body angle deviates {round(body_rmse)}% from the reference stroke on average")
-    return p_knee_angles, p_body_angles, r_knee_angles, r_body_angles
+    return p_knee_angles, p_body_angles, r_knee_angles, r_body_angles, max_knee_diff, max_knee_loc, max_body_diff, max_body_loc
 
-def calc_metrics(knee_user, body_user, knee_ref, body_ref):
+def gpt_wrapper(knee_user, body_user, knee_ref, body_ref, max_knee_d, max_knee_l, max_body_d, max_body_l):
     # Initialization
     user_body_finish_angle = min(body_user)
     user_body_finish_time = body_user.index(user_body_finish_angle) + 1 # 1 indexed (1-100%)
@@ -134,6 +134,7 @@ def calc_metrics(knee_user, body_user, knee_ref, body_ref):
     ref_body_finish_time = body_ref.index(ref_body_finish_angle) + 1
     diff = user_body_finish_angle - ref_body_finish_angle # -diff: body farther back, +diff: body farther forward
     THRESHOLD = 0.2  # tune as necessary
+
     # User calculations
     body_u_gradient = np.gradient(body_user)
     extrema_u = np.where(abs(body_u_gradient) < THRESHOLD)[0]
@@ -142,24 +143,66 @@ def calc_metrics(knee_user, body_user, knee_ref, body_ref):
     body_u_open_idx = candidates_u[-1] if len(candidates_u) > 0 else 0
     body_u_open_vel = round((user_body_finish_angle - body_user[body_u_open_idx]) / (user_body_finish_time - body_u_open_idx), 2)
     body_u_close_vel = round((body_user[stable_u_b_finish_idx] - user_body_finish_angle) / (stable_u_b_finish_idx - user_body_finish_time), 2)
+
     # Ref calculations
     body_r_gradient = np.gradient(body_ref)
-    plt.plot(body_ref)
-    plt.plot(body_r_gradient)
-    plt.show()
+    # plt.plot(body_ref)
+    # plt.plot(body_user)
+    # plt.plot(body_r_gradient)
+    # plt.show()
     extrema_r = np.where(abs(body_r_gradient) < THRESHOLD)[0]
     candidates_r = extrema_r[extrema_r <= 25]
     stable_r_b_finish_idx = extrema_r[extrema_r >= 60][0]
     body_r_open_idx = candidates_r[-1] if len(candidates_r) > 0 else 0
     body_r_open_vel = round((ref_body_finish_angle - body_ref[body_r_open_idx]) / (ref_body_finish_time - body_r_open_idx), 2)
     body_r_close_vel = round((body_ref[stable_r_b_finish_idx] - ref_body_finish_angle) / (stable_r_b_finish_idx - ref_body_finish_time), 2)
+
     # Comparisons
     print(body_u_open_vel, body_r_open_vel)
     print(body_u_close_vel, body_r_close_vel)
-    open_percent_diff = round((body_u_open_vel / body_r_open_vel) - 1, 3)
-    close_percent_diff = round((body_u_close_vel / body_r_close_vel) - 1, 3)
-    print(open_percent_diff * 100)
-    print(close_percent_diff * 100)
+    open_percent_diff = round(((body_u_open_vel / body_r_open_vel) - 1) * 100) # format: x% faster than ref
+    close_percent_diff = round(((body_u_close_vel / body_r_close_vel) - 1) * 100)
+    fast_or_slow_o = "faster" if open_percent_diff > 0 else "slower"
+    fast_or_slow_c = "faster" if close_percent_diff > 0 else "slower"
+
+    system = """
+    You are an experienced rowing coach analyzing an athlete's erg stroke 
+    compared to an elite reference stroke. 
+    
+    Rules:
+    - Give exactly 1-2 coaching cues, prioritized by impact
+    - Be specific about timing and numbers
+    - Sound like a coach talking to an athlete, not a data report
+    - Do not recommend they fix everything at once
+    
+    Important: 0% = catch, 100% = return to catch. 
+    Body should ideally start opening at the middle of the drive, so around 20-30%
+    """
+
+    user = f"""
+    User metrics:
+    - Body opening initiates at: {body_u_open_idx}% of stroke (reference: {body_r_open_idx}%)
+    - User finish location: {user_body_finish_time}% of stroke (reference: {ref_body_finish_time}%)
+    - Body opening average velocity from start to finish: {body_u_open_vel}°/s (reference: {body_r_open_vel}°/s, user is {abs(open_percent_diff)}% {fast_or_slow_o})
+    - Body closing average velocity from start to finish: {body_u_close_vel}°/s (reference: {body_r_close_vel}°/s, user is {abs(close_percent_diff)}% {fast_or_slow_c})
+    - Body angle at catch: {body_user[0]}° (reference: {body_ref[0]}°)
+    - Knee angle at catch: {knee_user[0]}° (reference: {knee_ref[0]}°)
+    - Peak body angle deviation: {max_body_d}° at {max_body_l}% of the stroke
+    - Peak knee angle deviation: {max_knee_d}° at {max_knee_l}% of the stroke """
+
+    api_key = os.environ.get("OPENAI_API_KEY")
+    client = OpenAI(api_key=api_key)
+
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user}
+        ]
+    )
+    feedback = response.choices[0].message.content
+
+    return feedback
 
 if __name__ == '__main__':
 
@@ -178,8 +221,10 @@ if __name__ == '__main__':
     p_x, p_y = process_poses(list2)
     list2 = stack_poses(p_x,p_y)
 
-    knee_u, body_u, knee_r, body_r = compare_ref(list2, list1)
-    calc_metrics(knee_u,body_u,knee_r,body_r)
+    knee_u, body_u, knee_r, body_r, knee_d, knee_l, body_d, body_l = compare_ref(list2, list1)
+    feedback = gpt_wrapper(knee_u,body_u,knee_r,body_r, knee_d, knee_l, body_d, body_l)
+
+    print(feedback)
     '''
     # plt.plot(body1)
     plt.plot(body2)
@@ -195,4 +240,15 @@ Metrics to calculate:
 - Forward and backward body angle velocities
 - Peak knee angle timing
 
+'''
+
+'''
+Alright, listen up. First off, we need to work on your body opening timing.
+Right now, you're initiating it too early at 11%, while the elite reference kicks in right at the catch. 
+Focus on keeping your body closed until you hit the catch—let's see if you can delay that body opening until 5% of the stroke for starters.
+
+Second, let’s address your finish position. You're coming through at 41%, but the ideal is 33%. 
+This is too far back and can lead to inefficiency. 
+Keep your finish tight and drive your hands away from your body just a bit quicker as you hit the release. 
+Let’s work on these two points, and we'll build from there!
 '''
